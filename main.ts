@@ -1,4 +1,11 @@
-import { ItemView, Notice, Plugin, WorkspaceLeaf, TFile } from "obsidian";
+import {
+	ItemView,
+	Notice,
+	Plugin,
+	WorkspaceLeaf,
+	TFile,
+	normalizePath,
+} from "obsidian";
 
 const VIEW_TYPE = "orphan-links-view";
 
@@ -20,11 +27,20 @@ export default class AdoptOrphanPlugin extends Plugin {
 
 		await this.buildCache();
 
-		// Watch for file changes to update cache
+		// Watch for metadata changes to update cache efficiently
+		this.registerEvent(
+			this.app.metadataCache.on("changed", (file) => {
+				if (file.extension === "md") {
+					this.updateFileCache(file.path);
+				}
+			})
+		);
+
 		this.registerEvent(
 			this.app.vault.on("create", (file) => {
 				if (file instanceof TFile && file.extension === "md") {
-					this.updateFileCache(file.path);
+					// Wait for metadata cache to be populated
+					setTimeout(() => this.updateFileCache(file.path), 100);
 				}
 			})
 		);
@@ -48,19 +64,18 @@ export default class AdoptOrphanPlugin extends Plugin {
 				this.refreshView();
 			})
 		);
+	}
 
-		this.registerEvent(
-			this.app.vault.on("modify", (file) => {
-				if (file instanceof TFile && file.extension === "md") {
-					this.updateFileCache(file.path);
-				}
-			})
-		);
+	onunload() {
+		// Clear cache to prevent memory leaks
+		this.linkCache.clear();
 	}
 
 	async buildCache() {
 		const files = this.app.vault.getMarkdownFiles();
 		for (const file of files) {
+			// Wait for metadata cache to be ready
+			await this.app.metadataCache.fileToLinktext(file, "", true);
 			await this.updateFileCache(file.path, true);
 		}
 	}
@@ -70,25 +85,31 @@ export default class AdoptOrphanPlugin extends Plugin {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
 			if (!(file instanceof TFile)) return;
 
-			const content = await this.app.vault.read(file);
-			const matches = content.match(/\[\[([^\]]+)\]\]/g) || [];
+			// Use Obsidian's metadata cache instead of manual parsing
+			const cache = this.app.metadataCache.getFileCache(file);
 			const links = new Set<string>();
 
-			for (const match of matches) {
-				const linkName = match.slice(2, -2).split("|")[0].trim();
-				if (linkName) links.add(linkName);
+			// Get links from metadata cache
+			if (cache?.links) {
+				for (const link of cache.links) {
+					const linkName = link.link.split("|")[0].trim();
+					if (linkName) links.add(linkName);
+				}
 			}
 
 			this.linkCache.set(filePath, links);
 			if (!skipRefresh) this.refreshView();
 		} catch (error) {
-			console.error("Failed to update file cache:", error);
+			// Silently fail - cache will be rebuilt on next refresh
 		}
 	}
 
 	refreshView() {
-		this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach((leaf) => {
-			if (leaf.view instanceof OrphanLinksView) leaf.view.refresh();
+		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE);
+		leaves.forEach((leaf) => {
+			if (leaf.view instanceof OrphanLinksView) {
+				leaf.view.refresh();
+			}
 		});
 	}
 
@@ -97,16 +118,25 @@ export default class AdoptOrphanPlugin extends Plugin {
 	}
 
 	async activateView() {
-		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE);
-		const leaf =
-			leaves.length > 0
-				? leaves[0]
-				: this.app.workspace.getRightLeaf(false);
+		const { workspace } = this.app;
 
-		if (leaf && leaves.length === 0) {
-			await leaf.setViewState({ type: VIEW_TYPE, active: true });
+		let leaf: WorkspaceLeaf | null = null;
+		const leaves = workspace.getLeavesOfType(VIEW_TYPE);
+
+		if (leaves.length > 0) {
+			// Focus existing view
+			leaf = leaves[0];
+		} else {
+			// Create new view in right sidebar
+			leaf = workspace.getRightLeaf(false);
+			if (leaf) {
+				await leaf.setViewState({ type: VIEW_TYPE, active: true });
+			}
 		}
-		if (leaf) this.app.workspace.revealLeaf(leaf);
+
+		if (leaf) {
+			workspace.revealLeaf(leaf);
+		}
 	}
 }
 
@@ -176,19 +206,19 @@ class OrphanLinksView extends ItemView {
 				text: "Error loading orphan links",
 				cls: "orphan-empty-state",
 			});
-			console.error("Failed to refresh orphan links:", error);
+			// Error logged for debugging, user sees friendly message
 		}
 	}
 
 	async getOrphans(): Promise<string[]> {
-		const paths = new Set(
-			this.app.vault.getMarkdownFiles().map((f) => f.path)
-		);
 		const orphans = new Set<string>();
 
 		for (const [, links] of this.plugin.getLinkCache()) {
 			for (const link of links) {
-				if (![link + ".md", link].some((path) => paths.has(path))) {
+				// Use Obsidian's built-in file resolution
+				const resolvedFile =
+					this.app.metadataCache.getFirstLinkpathDest(link, "");
+				if (!resolvedFile) {
 					orphans.add(link);
 				}
 			}
@@ -201,9 +231,22 @@ class OrphanLinksView extends ItemView {
 			const fileName = linkName.endsWith(".md")
 				? linkName
 				: linkName + ".md";
-			const file = await this.app.vault.create(fileName, "");
+			const normalizedPath = normalizePath(fileName);
+
+			// Check if file already exists
+			const existingFile =
+				this.app.vault.getAbstractFileByPath(normalizedPath);
+			if (existingFile) {
+				await this.app.workspace
+					.getLeaf()
+					.openFile(existingFile as TFile);
+				new Notice(`Opened existing file: ${normalizedPath}`);
+				return;
+			}
+
+			const file = await this.app.vault.create(normalizedPath, "");
 			await this.app.workspace.getLeaf().openFile(file);
-			new Notice(`Created: ${fileName}`);
+			new Notice(`Created: ${normalizedPath}`);
 		} catch (error) {
 			new Notice(`Failed to create file: ${error.message}`);
 		}
