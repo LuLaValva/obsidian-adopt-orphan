@@ -1,45 +1,22 @@
 .orphan-empty-state {
 	color: var(--text-muted);
 	font-style: italic;
-	padding: 30px 20px;
+	padding: 2rem;
 	text-align: center;
-	font-size: 14px;
 }
 
 .orphan-header {
 	font-weight: 600;
-	font-size: 13px;
-	margin-bottom: 12px;
-	padding: 8px 12px;
+	margin-bottom: 0.5rem;
+	padding: 0.5rem 0;
 	border-bottom: 1px solid var(--background-modifier-border);
 	color: var(--text-muted);
-	text-transform: uppercase;
-	letter-spacing: 0.5px;
 }
-
 .orphan-list {
-	padding: 0;
+	padding-left: 0;
+	list-style-type: none;
 }
 
-.orphan-item {
-	padding: 10px 12px;
-	margin: 1px 0;
-	cursor: pointer;
-	border-radius: 6px;
-	transition: all 0.15s ease;
-	font-size: 14px;
-	border: 1px solid transparent;
-	word-break: break-word;
-}
-
-.orphan-item:hover,
-.orphan-item:focus {
-	background-color: var(--background-modifier-hover);
-	border-color: var(--background-modifier-border);
-	outline: none;
-	transform: translateX(2px);
-}
-
-.orphan-item:active {
-	background-color: var(--background-modifier-active-hover);
+.orphan-list li {
+	margin-bottom: 0.5rem;
 }

@@ -1,102 +1,41 @@
-import { ItemView, Notice, Plugin, WorkspaceLeaf, TFile } from "obsidian";
+import { ItemView, Notice, Plugin, WorkspaceLeaf } from "obsidian";
 
 const VIEW_TYPE = "orphan-links-view";
 
 export default class AdoptOrphanPlugin extends Plugin {
-	private linkCache = new Map<string, Set<string>>();
-
 	async onload() {
-		this.registerView(VIEW_TYPE, (leaf) => new OrphanLinksView(leaf, this));
+		this.registerView(VIEW_TYPE, (leaf) => new OrphanLinksView(leaf));
 
 		// Add ribbon icon and command
 		this.addRibbonIcon("broken-link", "Show orphan links", () =>
-			this.activateView()
+			this.activateOrphanView()
 		);
 		this.addCommand({
 			id: "show-orphan-links",
 			name: "Show orphan links",
-			callback: () => this.activateView(),
+			callback: () => this.activateOrphanView(),
 		});
 
-		await this.buildCache();
-
-		// Watch for file changes to update cache
+		// Listen for metadata cache updates to refresh view
 		this.registerEvent(
-			this.app.vault.on("create", (file) => {
-				if (file instanceof TFile && file.extension === "md") {
-					this.updateFileCache(file.path);
-				}
+			this.app.metadataCache.on("resolved", () => {
+				this.refreshOrphanView();
 			})
 		);
-
 		this.registerEvent(
-			this.app.vault.on("delete", (file) => {
-				this.linkCache.delete(file.path);
-				this.refreshView();
-			})
-		);
-
-		this.registerEvent(
-			this.app.vault.on("rename", (file, oldPath) => {
-				if (this.linkCache.has(oldPath)) {
-					this.linkCache.set(
-						file.path,
-						this.linkCache.get(oldPath) || new Set()
-					);
-					this.linkCache.delete(oldPath);
-				}
-				this.refreshView();
-			})
-		);
-
-		this.registerEvent(
-			this.app.vault.on("modify", (file) => {
-				if (file instanceof TFile && file.extension === "md") {
-					this.updateFileCache(file.path);
-				}
+			this.app.metadataCache.on("changed", () => {
+				this.refreshOrphanView();
 			})
 		);
 	}
 
-	async buildCache() {
-		const files = this.app.vault.getMarkdownFiles();
-		for (const file of files) {
-			await this.updateFileCache(file.path, true);
-		}
-	}
-
-	async updateFileCache(filePath: string, skipRefresh = false) {
-		try {
-			const file = this.app.vault.getAbstractFileByPath(filePath);
-			if (!(file instanceof TFile)) return;
-
-			const content = await this.app.vault.read(file);
-			const matches = content.match(/\[\[([^\]]+)\]\]/g) || [];
-			const links = new Set<string>();
-
-			for (const match of matches) {
-				const linkName = match.slice(2, -2).split("|")[0].trim();
-				if (linkName) links.add(linkName);
-			}
-
-			this.linkCache.set(filePath, links);
-			if (!skipRefresh) this.refreshView();
-		} catch (error) {
-			console.error("Failed to update file cache:", error);
-		}
-	}
-
-	refreshView() {
+	refreshOrphanView() {
 		this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach((leaf) => {
 			if (leaf.view instanceof OrphanLinksView) leaf.view.refresh();
 		});
 	}
 
-	getLinkCache() {
-		return this.linkCache;
-	}
-
-	async activateView() {
+	async activateOrphanView() {
 		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE);
 		const leaf =
 			leaves.length > 0
@@ -111,7 +50,7 @@ export default class AdoptOrphanPlugin extends Plugin {
 }
 
 class OrphanLinksView extends ItemView {
-	constructor(leaf: WorkspaceLeaf, private plugin: AdoptOrphanPlugin) {
+	constructor(leaf: WorkspaceLeaf) {
 		super(leaf);
 	}
 
@@ -120,7 +59,7 @@ class OrphanLinksView extends ItemView {
 	}
 
 	getDisplayText() {
-		return "Orphan Links";
+		return "Orphan links";
 	}
 
 	getIcon() {
@@ -128,8 +67,6 @@ class OrphanLinksView extends ItemView {
 	}
 
 	async onOpen() {
-		if (this.plugin.getLinkCache().size === 0)
-			await this.plugin.buildCache();
 		await this.refresh();
 	}
 
@@ -138,7 +75,7 @@ class OrphanLinksView extends ItemView {
 		container.empty();
 
 		try {
-			const orphans = await this.getOrphans();
+			const orphans = this.getOrphans();
 
 			if (orphans.length === 0) {
 				container.createEl("div", {
@@ -155,20 +92,17 @@ class OrphanLinksView extends ItemView {
 				cls: "orphan-header",
 			});
 
-			const list = container.createEl("div", { cls: "orphan-list" });
-			orphans.forEach((link, index) => {
-				const item = list.createEl("div", {
+			const list = container.createEl("ul", { cls: "orphan-list" });
+			orphans.forEach((link) => {
+				const item = list.createEl("li");
+				const anchor = item.createEl("a", {
 					text: link,
-					cls: "orphan-item",
-					attr: { tabindex: "0" },
+					attr: { href: "#" },
 				});
 
-				item.onclick = () => this.createFile(link);
-				item.onkeydown = (e) => {
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						this.createFile(link);
-					}
+				anchor.onclick = (e) => {
+					e.preventDefault();
+					this.createFile(link);
 				};
 			});
 		} catch (error) {
@@ -180,23 +114,19 @@ class OrphanLinksView extends ItemView {
 		}
 	}
 
-	async getOrphans(): Promise<string[]> {
-		const paths = new Set(
-			this.app.vault.getMarkdownFiles().map((f) => f.path)
-		);
+	getOrphans() {
+		// Use metadataCache.unresolvedLinks to get all orphan links
+		const unresolved = this.app.metadataCache.unresolvedLinks;
 		const orphans = new Set<string>();
-
-		for (const [, links] of this.plugin.getLinkCache()) {
-			for (const link of links) {
-				if (![link + ".md", link].some((path) => paths.has(path))) {
-					orphans.add(link);
-				}
+		for (const links of Object.values(unresolved)) {
+			for (const link of Object.keys(links)) {
+				orphans.add(link);
 			}
 		}
 		return Array.from(orphans).sort();
 	}
 
-	async createFile(linkName: string) {
+	async createFile(linkName: string): Promise<void> {
 		try {
 			const fileName = linkName.endsWith(".md")
 				? linkName
