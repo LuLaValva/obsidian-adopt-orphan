@@ -1,14 +1,8 @@
 # Adopt Orphan
 
-A simple Obsidian plugin that helps you manage orphaned links - links that point to files that don't exist yet.
+Obsidian plugin for quickly accessing unresolved/orphan links through a side panel
 
-## Features
-
-- **Side Panel View**: See all orphaned links in a convenient sidebar panel
-- **One-Click Creation**: Click any orphan link to instantly create the corresponding file
-- **Real-time Updates**: The list updates automatically as you type and create/delete files
-- **Fast Performance**: Uses smart caching to stay responsive even in large vaults
-- **Keyboard Accessible**: Navigate and create files using keyboard shortcuts
+![An example file with some unresolved links, and a sidebar that shows a list of them](./screenshot.png)
 
 ## How to Use
 
