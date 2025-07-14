@@ -1,9 +1,9 @@
 {
 	"id": "adopt-orphan",
 	"name": "Adopt Orphan",
-	"version": "1.0.0",
+	"version": "1.0.2",
 	"minAppVersion": "0.15.0",
-	"description": "Turn unresolved links into files with one click. See all orphaned [[links]] in a sidebar and instantly create the missing files.",
+	"description": "Sidebar for listing unresolved/orphan links",
 	"author": "Luke LaValva",
 	"authorUrl": "https://lavalva.dev",
 	"isDesktopOnly": false
