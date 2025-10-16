@@ -3,7 +3,7 @@
 	"name": "Adopt Orphan",
 	"version": "1.0.3",
 	"minAppVersion": "0.15.0",
-	"description": "Sidebar for listing unresolved/orphan links",
+	"description": "Find all unresolved links (orphans) and list them in a sidebar for fast file creation.",
 	"author": "Luke LaValva",
 	"authorUrl": "https://lavalva.dev",
 	"isDesktopOnly": false
