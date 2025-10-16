@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-sample-plugin",
 	"version": "1.0.2",
-	"description": "Sidebar tool for listing unresolved links in Obsidian",
+	"description": "Find all unresolved links (orphans) and list them in a sidebar for fast file creation.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
