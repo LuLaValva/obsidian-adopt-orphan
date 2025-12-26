@@ -3,7 +3,7 @@ import { ItemView, Notice, Plugin, WorkspaceLeaf } from "obsidian";
 const VIEW_TYPE = "orphan-links-view";
 
 export default class AdoptOrphanPlugin extends Plugin {
-	async onload() {
+	onload() {
 		this.registerView(VIEW_TYPE, (leaf) => new OrphanLinksView(leaf));
 
 		// Add ribbon icon and command
@@ -31,7 +31,7 @@ export default class AdoptOrphanPlugin extends Plugin {
 
 	refreshOrphanView() {
 		this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach((leaf) => {
-			if (leaf.view instanceof OrphanLinksView) leaf.view.refresh();
+			if (leaf.view instanceof OrphanLinksView) void leaf.view.refresh();
 		});
 	}
 
@@ -67,10 +67,10 @@ class OrphanLinksView extends ItemView {
 	}
 
 	async onOpen() {
-		await this.refresh();
+		this.refresh();
 	}
 
-	async refresh() {
+	refresh() {
 		const container = this.containerEl.children[1];
 		container.empty();
 
